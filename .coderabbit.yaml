@@ -1,0 +1,21 @@
+language: "en-US"
+reviews:
+  auto_review:
+    enabled: true
+  path_instructions:
+    - path: "app/**"
+      instructions: |
+        - Verify Server vs Client component usage.
+        - Ensure consistent loading/error state handling.
+    - path: "components/**"
+      instructions: |
+        - Require Prop validation and accessibility compliance (ARIA).
+        - Guarantee no type 'any' or unchecked props.
+    - path: "lib/**"
+      instructions: |
+        - Ensure security around Supabase queries and AI API usage.
+    - path: "app/api/**"
+      instructions: |
+        - Require Zod validation.
+        - Verify authentication before CRUD.
+        - Correct HTTP codes and rate-limit enforcement.

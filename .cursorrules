@@ -1,0 +1,717 @@
+# BuilderSync - AI-Powered Student Builder Marketplace
+# Cursor AI Development Rules & Context
+# Version 2.0 - Agentic Development with CodeRabbit Integration
+
+## CORE DEVELOPMENT PRINCIPLES
+
+### CERTAINTY REQUIREMENT (CRITICAL)
+Before implementing ANY change, Cursor must be ≥95% certain of:
+- the exact user requirement and desired outcome
+- the implementation approach and correctness
+- the impact on existing codebase
+- potential side effects and edge cases  
+
+If certainty < 95%:
+STOP. DO NOT PROCEED.
+
+Ask clarifying questions:
+1. “Can you clarify [specific ambiguity]?”
+2. “Do you want [option A] or [option B]?”
+3. “Should this affect [related component/feature]?”
+4. “What’s the expected behavior in [edge case]?”
+5. “How should this integrate with [existing feature]?”
+
+Only proceed when 95%+ certain after response.
+
+Certainty Checklist:
+- [ ] I understand EXACTLY what the user wants.
+- [ ] I know WHERE in the codebase to make the change.
+- [ ] I know HOW to implement without breaking anything.
+- [ ] I’ve considered edge cases and error handling.
+- [ ] I can explain WHY my approach is correct.
+- [ ] Verified no conflicts with other features.
+
+---
+
+## AGENTIC DEVELOPMENT WORKFLOW
+
+### Phase 1: UNDERSTAND
+1. Parse request and intent.
+2. Analyze system context and dependencies.
+3. Identify missing details or assumptions.
+4. If uncertain, ask user.
+
+### Phase 2: PLAN
+1. Outline technical approach and file changes.
+2. Identify dependencies, potential conflicts, and schemas affected.
+3. Write a short plan before coding.
+
+### Phase 3: IMPLEMENT (Only when 95% certain)
+1. Make atomic, reversible changes per commit.
+2. Use strict TypeScript typing at all times.
+3. Handle errors explicitly (never swallow errors).
+4. Add comments for complex logic.
+
+### Phase 4: VALIDATE
+1. Self-review for correctness and maintainability.
+2. Test edge cases and performance.
+3. Check code readability and alignment with existing styles.
+
+---
+
+## CODERABBIT INTEGRATION
+
+### Pre-Commit Checklist
+- [ ] No TypeScript or lint errors.
+- [ ] No unused imports or dead code.
+- [ ] Functions strictly typed.
+- [ ] Validations added for all user inputs.
+- [ ] Added comments where complex logic is used.  
+- [ ] No console.logs in production code
+
+Testing:
+- [ ] Manually tested the specific change
+- [ ] Tested related features for regressions
+- [ ] Verified on both desktop and mobile
+- [ ] Checked error states and loading states
+
+Security:
+- [ ] No hardcoded credentials or API keys
+- [ ] User input is validated/sanitized
+- [ ] Database queries use parameterization
+- [ ] Authentication/authorization checks in place
+
+Performance:
+- [ ] No unnecessary re-renders
+- [ ] Images are optimized
+- [ ] No N+1 database queries
+- [ ] Large operations are memoized/cached
+
+Documentation:
+- [ ] Complex logic has inline comments
+- [ ] New functions have JSDoc comments
+- [ ] README updated if public API changed
+
+### Commit Message Format (for CodeRabbit)
+
+<type>(<scope>): <short summary>
+
+<body - explain WHY, not WHAT>
+
+<footer - breaking changes, issues closed>
+
+Types:
+- feat: New feature
+- fix: Bug fix
+- refactor: Code restructure (no behavior change)
+- perf: Performance improvement
+- test: Adding tests
+- docs: Documentation only
+- chore: Build process, dependencies
+
+Example:
+feat(voice-interview): add skip question functionality
+
+Users requested ability to skip questions they don't want to answer.
+Added skip button that advances to next question without recording.
+
+Closes #42
+
+### CodeRabbit Review Focus Areas
+
+Instruct CodeRabbit to prioritize:
+
+1. Type Safety
+   - Flag any any types
+   - Check for missing null/undefined checks
+   - Verify Zod schema alignment with types
+
+2. Security
+   - SQL injection vulnerabilities
+   - XSS attack vectors
+   - Exposed credentials
+
+3. Performance
+   - Unnecessary re-renders
+   - Missing memoization
+   - Large bundle sizes
+
+4. Accessibility
+   - Missing ARIA labels
+   - Keyboard navigation
+   - Color contrast
+
+5. Best Practices
+   - Consistent naming conventions
+   - DRY principle violations
+   - Overly complex functions (>50 lines)
+
+---
+
+## KEY FEATURES IMPLEMENTATION
+
+### 1. Voice Portfolio Builder
+
+File: components/voice-interview.tsx
+
+'use client'
+
+import { useState } from 'react'
+import { useVapi } from '@vapi-ai/react'
+import { generatePortfolio } from '@/lib/ai/anthropic'
+
+const INTERVIEW_QUESTIONS = [
+  "Hi! Let's start with your name and what you're studying.",
+  "Tell me about your favorite project you've built. What did it do?",
+  "What technologies or tools did you use?",
+  "What was the biggest challenge and how did you solve it?",
+  "What was your role if you worked with a team?",
+  "What impact did your project have?",
+  "Tell me about another project you're proud of.",
+  "What kinds of projects excite you most?"
+]
+
+export function VoiceInterview({ userId }: { userId: string }) {
+  const [currentQuestion, setCurrentQuestion] = useState(0)
+  const [transcript, setTranscript] = useState<string[]>([])
+  const [isProcessing, setIsProcessing] = useState(false)
+  
+  const { start, stop, isActive, messages } = useVapi({
+    apiKey: process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY!,
+    assistant: {
+      model: {
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-20250514',
+        messages: [{
+          role: 'system',
+          content: `You are interviewing a student. Ask: "${INTERVIEW_QUESTIONS[currentQuestion]}". Listen to their answer and respond naturally.`
+        }]
+      },
+      voice: {
+        provider: '11labs',
+        voiceId: 'rachel'
+      }
+    },
+    onMessageUpdate: (msg) => {
+      if (msg.role === 'user') {
+        setTranscript(prev => [...prev, msg.content])
+      }
+    }
+  })
+  
+  const handleFinish = async () => {
+    setIsProcessing(true)
+    stop()
+    
+    const fullTranscript = transcript.join('\n\n')
+    const portfolio = await generatePortfolio(fullTranscript)
+    
+    await fetch('/api/voice/generate-portfolio', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId,
+        transcript: fullTranscript,
+        portfolio
+      })
+    })
+    
+    setIsProcessing(false)
+  }
+  
+  return (
+    <div className="flex flex-col items-center space-y-6">
+      <div className={`w-64 h-64 rounded-full bg-indigo-100 flex items-center justify-center ${isActive ? 'animate-pulse' : ''}`}>
+        {/* Waveform animation */}
+      </div>
+      
+      <p className="text-2xl font-semibold text-center">
+        {INTERVIEW_QUESTIONS[currentQuestion]}
+      </p>
+      
+      <div className="w-full max-w-2xl bg-slate-50 rounded-lg p-4 max-h-64 overflow-y-auto">
+        {transcript.map((text, i) => (
+          <p key={i} className="mb-2">{text}</p>
+        ))}
+      </div>
+      
+      <div className="flex gap-4">
+        <button onClick={isActive ? stop : start}>
+          {isActive ? 'Pause' : 'Start'}
+        </button>
+        <button onClick={() => setCurrentQuestion(q => Math.min(q + 1, INTERVIEW_QUESTIONS.length - 1))}>
+          Skip
+        </button>
+        <button onClick={handleFinish} disabled={isProcessing}>
+          {isProcessing ? 'Processing...' : 'Finish'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+### 2. AI Portfolio Generation
+
+File: lib/ai/anthropic.ts
+
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY!
+})
+
+export async function generatePortfolio(transcript: string) {
+  const message = await anthropic.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 2048,
+    messages: [{
+      role: 'user',
+      content: `Convert this voice interview transcript into a structured portfolio JSON.
+
+Transcript:
+${transcript}
+
+Extract and format as JSON:
+{
+  "summary": "2-3 sentence bio",
+  "projects": [
+    {
+      "name": "Project Name",
+      "description": "What it does",
+      "techStack": ["React", "Node.js"],
+      "role": "What you did",
+      "impact": "Results/metrics",
+      "challenges": "Problems solved"
+    }
+  ],
+  "skills": ["extracted technical skills"]
+}
+
+Return ONLY valid JSON.`
+    }]
+  })
+  
+  const content = message.content[0].text
+  return JSON.parse(content)
+}
+
+### 3. Supabase Client Setup
+
+File: lib/supabase/client.ts
+
+import { createBrowserClient } from '@supabase/ssr'
+import { Database } from '@/types/database.types'
+
+export function createClient() {
+  return createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
+
+File: lib/supabase/server.ts
+
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { Database } from '@/types/database.types'
+
+export function createServerComponentClient() {
+  const cookieStore = cookies()
+  
+  return createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        }
+      }
+    }
+  )
+}
+
+### 4. Authentication Hook
+
+File: hooks/use-auth.ts
+
+'use client'
+
+import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import type { User } from '@supabase/supabase-js'
+
+export function useAuth() {
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const supabase = createClient()
+  
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
+      setLoading(false)
+    })
+    
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setUser(session?.user ?? null)
+      }
+    )
+    
+    return () => subscription.unsubscribe()
+  }, [])
+  
+  return { user, loading }
+}
+
+### 5. Real-time Messaging
+
+File: components/chat-interface.tsx
+
+'use client'
+
+import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+
+interface Message {
+  id: string
+  content: string
+  sender_id: string
+  created_at: string
+}
+
+export function ChatInterface({ 
+  currentUserId, 
+  recipientId 
+}: { 
+  currentUserId: string
+  recipientId: string 
+}) {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [newMessage, setNewMessage] = useState('')
+  const supabase = createClient()
+  
+  useEffect(() => {
+    loadMessages()
+    
+    const channel = supabase
+      .channel('messages')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `sender_id=eq.${recipientId},recipient_id=eq.${currentUserId}`
+      }, (payload) => {
+        setMessages(prev => [...prev, payload.new as Message])
+      })
+      .subscribe()
+    
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [currentUserId, recipientId])
+  
+  async function loadMessages() {
+    const { data } = await supabase
+      .from('messages')
+      .select('*')
+      .or(`and(sender_id.eq.${currentUserId},recipient_id.eq.${recipientId}),and(sender_id.eq.${recipientId},recipient_id.eq.${currentUserId})`)
+      .order('created_at', { ascending: true })
+    
+    if (data) setMessages(data)
+  }
+  
+  async function sendMessage() {
+    if (!newMessage.trim()) return
+    
+    await supabase.from('messages').insert({
+      sender_id: currentUserId,
+      recipient_id: recipientId,
+      content: newMessage
+    })
+    
+    setNewMessage('')
+  }
+  
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        {messages.map(msg => (
+          <div
+            key={msg.id}
+            className={msg.sender_id === currentUserId ? 'text-right' : 'text-left'}
+          >
+            <div className="inline-block bg-slate-100 rounded-lg px-4 py-2">
+              {msg.content}
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      <div className="p-4 border-t flex gap-2">
+        <input
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+          placeholder="Type a message..."
+          className="flex-1 px-4 py-2 border rounded-lg"
+        />
+        <button onClick={sendMessage}>Send</button>
+      </div>
+    </div>
+  )
+}
+
+---
+
+## ENVIRONMENT VARIABLES
+
+Create .env.local:
+
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
+ANTHROPIC_API_KEY=your_claude_api_key
+
+NEXT_PUBLIC_VAPI_PUBLIC_KEY=your_vapi_key
+
+STRIPE_SECRET_KEY=your_stripe_key
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=your_stripe_pub_key
+
+OPENAI_API_KEY=your_openai_key
+
+PINECONE_API_KEY=your_pinecone_key
+PINECONE_ENVIRONMENT=your_env
+PINECONE_INDEX=buildersync
+
+---
+
+## COMMON PATTERNS
+
+### Protected Routes
+
+app/(student)/layout.tsx
+
+import { redirect } from 'next/navigation'
+import { createServerComponentClient } from '@/lib/supabase/server'
+
+export default async function StudentLayout({
+  children
+}: {
+  children: React.ReactNode
+}) {
+  const supabase = createServerComponentClient()
+  
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) redirect('/login')
+  
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', session.user.id)
+    .single()
+  
+  if (profile?.role !== 'student') redirect('/startup/dashboard')
+  
+  return <>{children}</>
+}
+
+### Server Actions
+
+app/actions/projects.ts
+
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { createServerComponentClient } from '@/lib/supabase/server'
+
+export async function createProject(formData: FormData) {
+  const supabase = createServerComponentClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  
+  const { error } = await supabase.from('projects').insert({
+    posted_by: user.id,
+    title: formData.get('title') as string,
+    description: formData.get('description') as string,
+    tech_stack: JSON.parse(formData.get('tech_stack') as string)
+  })
+  
+  if (error) throw error
+  
+  revalidatePath('/startup/dashboard')
+}
+
+### Loading States
+
+app/(student)/projects/loading.tsx
+
+export default function Loading() {
+  return (
+    <div className="grid grid-cols-3 gap-4">
+      {[...Array(6)].map((_, i) => (
+        <div key={i} className="h-64 bg-slate-200 animate-pulse rounded-lg" />
+      ))}
+    </div>
+  )
+}
+
+---
+
+## PERFORMANCE OPTIMIZATION
+
+### Image Optimization
+
+import Image from 'next/image'
+
+<Image
+  src={profile.avatar_url || '/default-avatar.png'}
+  alt={profile.full_name}
+  width={64}
+  height={64}
+  className="rounded-full"
+  priority={false}
+/>
+
+### Dynamic Imports
+
+import dynamic from 'next/dynamic'
+
+const VoiceInterview = dynamic(
+  () => import('@/components/voice-interview'),
+  { ssr: false, loading: () => <p>Loading interview...</p> }
+)
+
+### Database Indexes
+
+create index idx_projects_status on projects(status);
+create index idx_projects_tech_stack on projects using gin(tech_stack);
+create index idx_proposals_student on proposals(student_id);
+create index idx_messages_recipient on messages(recipient_id, created_at);
+
+---
+
+## SECURITY BEST PRACTICES
+
+1. Never expose service role keys - Use anon key + RLS in frontend
+2. Validate all inputs - Use Zod schemas on API routes
+3. Sanitize user content - Escape HTML in chat messages
+4. Rate limit API routes - Prevent abuse with Vercel rate limiting
+5. Use HTTPS only - Enforce in production
+6. Implement CSRF protection - Built into Next.js forms
+7. Audit dependencies - Run npm audit regularly
+
+---
+
+## HELPFUL COMMANDS
+
+npm run dev
+npm run type-check
+npm run lint
+npm run build
+npx supabase gen types typescript --project-id your-project > types/database.types.ts
+vercel --prod
+
+---
+
+## CURSOR-SPECIFIC INSTRUCTIONS
+
+When Implementing Features:
+
+1. ALWAYS ask if < 95% certain
+2. NEVER assume - verify with user
+3. ALWAYS show what you plan to do before doing it
+4. ALWAYS explain why you chose an approach
+5. ALWAYS consider existing code patterns
+6. ALWAYS handle errors explicitly
+7. ALWAYS type strictly (no any)
+8. ALWAYS test critical paths
+9. ALWAYS document complex logic
+10. ALWAYS optimize for maintainability over cleverness
+
+When User Provides Incomplete Information:
+
+Template Response:
+⚠️ I need more details to implement this correctly (current certainty: XX%):
+
+Questions:
+1. [Specific question about requirement]
+2. [Question about implementation approach]
+3. [Question about edge cases]
+4. [Question about integration points]
+
+Once clarified, I'll:
+- [Step 1]
+- [Step 2]
+- [Step 3]
+
+Files affected:
+- [file 1]
+- [file 2]
+
+Please confirm before I proceed.
+
+When User Provides Clear Requirements:
+
+Template Response:
+✅ I'm 95%+ certain. Here's my implementation plan:
+
+Changes:
+1. [Specific change to file A]
+2. [Specific change to file B]
+3. [Add new file C with purpose]
+
+Testing approach:
+- [Test scenario 1]
+- [Test scenario 2]
+
+Proceeding with implementation...
+
+---
+
+## COMMON ISSUES & SOLUTIONS
+
+Issue: "Hydration mismatch"
+Solution: Ensure Server and Client Components render same initial HTML. Use suppressHydrationWarning on time-sensitive elements.
+
+Issue: Supabase RLS blocking queries
+Solution: Check policies with EXPLAIN in SQL editor. Ensure auth.uid() matches expected user.
+
+Issue: Vapi voice not working
+Solution: Verify microphone permissions. Check browser console for CORS errors. Ensure HTTPS in production.
+
+Issue: Claude API timeout
+Solution: Increase max_tokens or implement streaming. Add retry logic with exponential backoff.
+
+---
+
+## RESOURCES
+
+Next.js 14 Docs: https://nextjs.org/docs
+TypeScript Handbook: https://www.typescriptlang.org/docs/
+Supabase Docs: https://supabase.com/docs
+shadcn/ui: https://ui.shadcn.com
+Anthropic Claude API: https://docs.anthropic.com
+Vapi SDK: https://docs.vapi.ai
+Tailwind CSS: https://tailwindcss.com/docs
+Zod: https://zod.dev
+Playwright: https://playwright.dev
+Vitest: https://vitest.dev
+
+---
+
+## FINAL REMINDER
+
+YOU ARE AN AGENTIC DEVELOPER WITH STRICT CERTAINTY REQUIREMENTS.
+
+BEFORE ANY IMPLEMENTATION:
+1. ✅ Am I ≥95% certain of the requirements?
+2. ✅ Do I understand the full context?
+3. ✅ Have I considered all edge cases?
+4. ✅ Will this break existing features?
+5. ✅ Is this the simplest correct solution?
+
+IF ANY ANSWER IS NO → ASK QUESTIONS.
+
+Your primary goal: Write correct, maintainable, secure code that solves the user's ACTUAL problem, not what you assume they need.
